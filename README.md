@@ -13,6 +13,18 @@ $ cd stronghold
 $ npm install
 ```
 
+## Using Docker
+
+If you have docker install (with **docker compose**) you can run the project
+easily:
+
+```bash
+# Install dependencies
+$ docker-compose run app npm install 
+# Run an npm command
+$ docker-compose run app npm <command name>
+```
+
 ## Run the application
 
 You can run the application and the test easily with the following commands:

@@ -1,1 +1,1 @@
-export default (argv, envs) => console.log('run')
+export default (args, argv) => console.log("Hello from Stronghold!")
