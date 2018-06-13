@@ -1,0 +1,330 @@
+#!/usr/bin/env node
+const chokidar = require('chokidar')
+const ls = require('livescript')
+const chalk = require('chalk')
+const fs = require('fs')
+const path = require('path')
+const glob = require('glob')
+const args = process.argv.slice(2)
+const comment = args[0] || 'compile'
+const options = require('yargs').argv
+const { spawn } = require('child_process')
+let respawnInterval = null;
+let childProcess = null;
+
+const printHeaderLine = () => console.log(chalk.bold.yellow(
+  "Stonghold :: Livescript -> Javascript\n"
+))
+
+const formatError = (err, pathname) => {
+  const hash = err.hash;
+  const message = err
+    .message
+    .replace(/on line [0-9]+:?/, '')
+    .replace(/  /g, ' ')
+    .trim();
+  const filePath = path.relative(process.cwd(), pathname);
+  const line = hash
+    ? hash.loc.first_line
+    : err.message.match(/on line ([0-9]+)/)[1];
+  const column = hash && hash.loc.first_column;
+  const fqName = `${filePath}:${line}${column ? `:${column}` : ''}`;
+
+  return chalk.bold.red(`At ${fqName} :: ${message}`);
+}
+
+const compile = path => {
+  try {
+    const content = fs.readFileSync(path).toString();
+
+    const js = ls.compile(content);
+
+    const jsPath = path.replace(/\.ls$/, '.js');
+
+    fs.writeFileSync(jsPath, js);
+  } catch (error) {
+    throw new Error(formatError(error, path));
+  }
+}
+
+const compileAndLog = (prefix = '', pathname) => {
+  const rPath = path.relative(process.cwd(), pathname)
+
+  process.stdout.write(prefix + chalk.grey(`${rPath} :: `));
+
+  try {
+    compile(pathname);
+
+    process.stdout.write(chalk.green('Ok\n'))
+
+    return true;
+  } catch (error) {
+    process.stdout.write(chalk.red('Error\n'));
+    console.log(error.message);
+
+    return false;
+  }
+}
+
+const unlink = path => {
+  if (fs.existsSync(path)) {
+    fs.unlinkSync(path);
+  }
+
+  const jsPath = path.replace(/\.ls$/, '.js');
+
+  if (fs.existsSync(jsPath)) {
+    fs.unlinkSync(jsPath);
+  }
+}
+
+const isDirectory = dir =>
+  dir && fs.existsSync(dir) && fs.statSync(dir).isDirectory();
+
+const compileDir = dir => new Promise((ok, fail) => {
+  if (!isDirectory(dir)) {
+    console.log(chalk.red(`Invalid directory :: ${dir}`));
+
+    return fail();
+  }
+
+  console.log(chalk.bold.grey(`Compiling :: ${dir} ->`));
+
+  glob(`${dir}/**/*.ls`, (er, files) => {
+    if (er) {
+      console.log(chalk.bold.red(`Error: ${error.message}`));
+      console.log(chalk.red(error.stack));
+
+      return;
+    }
+
+    for (let file of files) {
+      if (!compileAndLog("  ", file)) {
+        return fail();
+      }
+    }
+
+    return ok();
+  })
+})
+
+printHeaderLine();
+
+const help = () => {
+  console.log(chalk.grey('Stronghold is a friendly compiler for livescript'));
+  console.log(chalk.yellow('Usage:'));
+
+  console.log();
+
+  console.log(chalk.grey("  stronghold [COMMAND] [OPTIONS]"));
+
+  console.log();
+
+  console.log(chalk.yellow('Example:'));
+
+  console.log([
+    chalk.blue("  $ stronghold compile src"),
+    chalk.grey("    Compile all .ls file inside a directory"),
+    chalk.grey(""),
+    chalk.blue("  $ stronghold watch src"),
+    chalk.grey("    watch all .ls file changement of the src directory"),
+    chalk.grey(""),
+    chalk.blue("  $ stronghold watch src -e \"npm start\""),
+    chalk.grey("    watch all .ls file changement of the src directory and execute a process"),
+    chalk.grey(""),
+  ].join("\n"));
+
+  console.log(chalk.yellow("Command:"));
+
+  console.log([
+    chalk.green("  compile <directory>:"),
+    chalk.grey("    compile all .ls file in the directory into a .js file"),
+    chalk.green("  watch <directory>:"),
+    chalk.grey("    watch all .ls file in the directory and"),
+    chalk.grey("    compile them into a .js file"),
+  ].join("\n"))
+}
+
+const runChildProcess = command => {
+  const members = command.trim().split(' ').map(x => x.trim()).filter(x => !!x);
+  const exec = spawn(members[0], members.slice(1));
+
+  exec.stdout.on('data', data => {
+    data = `${data}`.split("\n");
+
+    data
+      .filter(line => !!line)
+      .map(line => console.log(chalk.grey(`    ${command} :: `) + line));
+  });
+
+  exec.stderr.on('data', data => {
+    data = `${data}`.split("\n");
+
+    data
+      .filter(line => !!line)
+      .map(line => line.trim())
+      .map(line => console.log(chalk.bold.red(`    ${command} :: `) + line));
+  })
+
+  exec.once('exit', code => {
+    let errored = 0 !== code && null !== code;
+    let restart = null === code;
+    let color = errored
+      ? chalk.bold.red
+      : restart
+        ? chalk.yellow
+        : chalk.green;
+
+    console.log(chalk.grey(`    ${command} :: `) + color(`${restart ? 'Restart' : 'Exit'} ${null !== code ? code : ''}`));
+  });
+
+  exec.once('error', e => {
+    data = `${data}`.split("\n");
+
+    console.log(chalk.red.bold(`    ${command} :: `) + chalk.red(`critical error`));
+    exec.kill()
+  })
+
+  exec.once('disconnect', code => {
+    exec.kill();
+  });
+
+  return exec;
+}
+
+const watch = (dir, command = null) => new Promise((ok, fail) => {
+  if (command) {
+    childProcess = runChildProcess(command);
+  }
+
+  if (!isDirectory(dir)) {
+    console.log(chalk.red(`Invalid directory :: ${dir}`));
+
+    return fail();
+  }
+
+  let respawnInterval = null;
+
+  chokidar
+    .watch(dir)
+    .on('all', (event, pathname) => {
+      console.log(`${event} :: ${pathname}`);
+
+      if (!pathname.match(/\.ls$/)) {
+        return;
+      }
+
+      if ('add' === event || 'change' === event) {
+        if (childProcess) {
+          childProcess.once('exit', () => {
+            const rPath = path.relative(process.cwd(), pathname)
+            process.stdout.write(chalk.grey(`${rPath} :: `))
+
+            try {
+              compile(pathname);
+
+              process.stdout.write(chalk.green('Ok\n'));
+            } catch (e) {
+              process.stdout.write(chalk.red('Error\n'));
+              console.log(e.message);
+            }
+
+            if (respawnInterval) {
+              clearTimeout(respawnInterval);
+              respawnInterval = setTimeout(() => {
+                childProcess = runChildProcess(command);
+              }, 250)
+            } else {
+              respawnInterval = setTimeout(() => {
+                childProcess = runChildProcess(command);
+              }, 250)
+            }
+          })
+
+          childProcess.kill();
+        } else {
+          const rPath = path.relative(process.cwd(), pathname)
+          process.stdout.write(chalk.grey(`${rPath} :: `))
+
+          try {
+            compile(pathname);
+
+            process.stdout.write(chalk.green('Ok\n'))
+          } catch (e) {
+            process.stdout.write(chalk.red('Error\n'));
+            console.log(e.message);
+          }
+        }
+      }
+
+      if ('unlink' === event) {
+        if (childProcess) {
+          childProcess.kill();
+
+          childProcess.once('exit', () => {
+            const rpath = path.relative(process.cwd(), pathname)
+            process.stdout.write(chalk.grey(`${rPath} :: `))
+            unlink(pathname);
+            process.stdout.write(chalk.green('Ok\n'))
+
+            if (respawnInterval) {
+              clearTimeout(respawnInterval);
+              respawnInterval = setTimeout(() => {
+                childProcess = runChildProcess(command);
+              }, 250)
+            } else {
+              respawnInterval = setTimeout(() => {
+                childProcess = runChildProcess(command);
+              }, 250)
+            }
+          })
+        } else {
+          const rpath = path.relative(process.cwd(), pathname)
+          process.stdout.write(chalk.grey(`${rPath} :: `))
+          unlink(pathname);
+          process.stdout.write(chalk.green('Ok\n'))
+        }
+      }
+
+      return;
+    })
+})
+
+if (!args.length) {
+  help();
+}
+
+switch (args[0]) {
+  case 'help':
+    help();
+    process.exit(0);
+
+    break;
+  case 'compile':
+    compileDir(args[1])
+      .then(() => process.exit(0))
+      .catch(e => process.exit(1))
+
+    break;
+  case 'watch':
+    compileDir(args[1])
+      .then(() => console.log([
+        '',
+        chalk.yellow(`Watch :: ${args[1]}`),
+        '',
+      ].join("\n")))
+      .then(() => watch(args[1], options.command || null))
+      .then(() => process.exit(0))
+      .catch(e => console.error(e) || process.exit(1));
+
+    break;
+  case 'help':
+    help();
+    process.exit(1);
+
+    break;
+  default:
+    help();
+    process.exit(1);
+}
+

@@ -2,20 +2,26 @@
   "name": "stronghold",
   "version": "1.0.0",
   "description": "A simple game for FP beginners",
-  "main": "index.js",
+  "main": "src/index.js",
   "scripts": {
-    "test": "tape -r esm src/**/*.test.js",
-    "start": "node -r esm index.js",
-    "start:dev": "nodemon --watch src/ --exec \"npm start\"",
-    "test:dev": "nodemon --watch src/ --exec \"npm test\""
+    "test": "tape -r source-map-support/register src/**/*.test.js",
+    "start": "node -r source-map-support/register src/index.js",
+    "start:dev": "bin/compiler watch src --command=\"npm start\"",
+    "test:dev": "bin/compiler watch src --command=\"npm test\""
   },
   "author": "David Jegat <david.jegat@gmail.com>",
   "license": "MIT",
   "dependencies": {
-    "esm": "^3.0.49"
+    "glob": "^7.1.2",
+    "livescript": "^1.5.0",
+    "ramda": "^0.25.0",
+    "yargs": "^11.0.0"
   },
   "devDependencies": {
+    "chalk": "^2.4.1",
+    "chokidar": "^2.0.3",
     "nodemon": "^1.17.5",
+    "source-map-support": "^0.5.6",
     "tape": "^4.9.1"
   }
 }

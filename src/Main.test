@@ -1,0 +1,13 @@
+(function(){
+  var test, main;
+  test = require('tape').test;
+  main = require('./Main').main;
+  test('Main :: does nothing', function(arg$){
+    var equal, end;
+    equal = arg$.equal, end = arg$.end;
+    equal(main(), void 8);
+    return end();
+  });
+}).call(this);
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInNyYy9NYWluLnRlc3QubHMiXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6Ijs7RUFBbUIsSUFBUixDQUFBLENBQUEsQ0FBQSxPQUFBLENBQUEsTUFBQSxDQUFBLENBQVE7RUFDSSxJQUFaLENBQUEsQ0FBQSxDQUFBLE9BQUEsQ0FBQSxRQUFBLENBQUEsQ0FBWTtFQUV2QixLQUFLLHdCQUF1QixRQUFBLENBQUEsSUFBQTs7SUFBRyxhQUFBLE9BQU8sV0FBQTtJQUNwQyxNQUFNLEtBQUksR0FBSSxNQUFSO1dBQ04sSUFBRztHQUZBIiwic291cmNlc0NvbnRlbnQiOlsicmVxdWlyZSEgeyB0YXBlOiB7IHRlc3QgfSB9XG5yZXF1aXJlISB7ICcuL01haW4nOiB7IG1haW4gfSB9XG5cbnRlc3QgJ01haW4gOjogZG9lcyBub3RoaW5nJyAoeyBlcXVhbCwgZW5kIH0pIC0+XG4gIGVxdWFsIG1haW4oKSwgdm9pZFxuICBlbmQhXG4iXX0=
